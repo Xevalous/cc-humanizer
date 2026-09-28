@@ -1,0 +1,23 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-plugin-manifest.json",
+  "name": "humanizer",
+  "displayName": "Humanizer: Anti-AI Writing Enforcement & Audit",
+  "version": "3.0.0",
+  "description": "Automatically audits and enforces human writing rules from blader/humanizer (based on Wikipedia's 'Signs of AI writing'). Prevents AI tells, chatbot residue, em dashes, inflated claims, decorative bolding, and staging across tool uses and responses.",
+  "author": {
+    "name": "Xevalous"
+  },
+  "license": "MIT",
+  "homepage": "https://github.com/blader/humanizer",
+  "repository": "https://github.com/blader/humanizer",
+  "keywords": [
+    "humanizer",
+    "writing",
+    "anti-ai",
+    "style",
+    "prose",
+    "audit",
+    "enforcement"
+  ],
+  "defaultEnabled": true
+}
