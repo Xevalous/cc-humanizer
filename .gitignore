@@ -1,0 +1,25 @@
+# Node (test suite & hooks berjalan di Node.js)
+node_modules/
+npm-debug.log*
+yarn-error.log*
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Editor
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Temp & build output
+*.log
+dist/
+build/
+coverage/
+
+# Environment
+.env
+.env.local
