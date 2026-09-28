@@ -1,116 +1,85 @@
-# Humanizer: Claude Code Plugin
+# cc-humanizer
 
-Plugin Claude Code yang secara **otomatis mendeteksi, mengaudit, dan menegakkan aturan penulisan manusiawi (anti-AI writing patterns)** berdasarkan spesifikasi resmi [`blader/humanizer`](https://github.com/blader/humanizer) (Wikipedia: *Signs of AI writing*).
+A Claude Code plugin that audits and enforces human writing rules, based on [blader/humanizer](https://github.com/blader/humanizer) and Wikipedia's ["Signs of AI writing"](https://en.wikipedia.org/wiki/Wikipedia:Signs_of_AI_writing).
 
-AI agent yang aktif di Claude Code akan otomatis diaudit tanpa perlu Anda memanggil command atau skill `/humanize` secara manual.
+It stops AI tells before they land: em dashes, curly quotes, chatbot residue ("Great question!"), not-X-but-Y staging, dramatic closers, inflated claims, decorative bolding, and watchlist vocabulary. Enforcement happens automatically through hooks across the whole session, plus a manual `/audit` command and a full rewriting skill.
 
----
+## How it works
 
-## Fitur Utama
+The plugin wires up four hooks (`hooks/hooks.json`):
 
-1. **Injeksi Konteks Otomatis (`SessionStart`)**
-   - Saat sesi Claude Code dimulai (`startup`, `resume`, `clear`), hook menginjeksikan ringkasan ringkas dan ketat dari aturan *humanizer* ke dalam context prompt agen.
-   - Agen langsung mengetahui pantangan sebelum mulai menulis.
+| Hook | Script | What it does |
+|---|---|---|
+| `SessionStart` | `hooks/session-start.cjs` | Injects the humanizer writing guidelines into the session so the model follows them from the start. |
+| `PreToolUse` (Write/Edit/MultiEdit) | `hooks/scan.cjs pre` | Hard-blocks prose file writes that contain hard violations or breach density limits, forcing a rewrite without the tells. |
+| `PostToolUse` (Write/Edit/MultiEdit/NotebookEdit) | `hooks/scan.cjs post` | Backstop scan after the write completes. |
+| `Stop` | `hooks/stop-audit.cjs` | Audits the final assistant response for chatbot residue before the turn ends. |
 
-2. **Deteksi & Pemblokiran Sebelum Tulis (`PreToolUse`)**
-   - Menginspeksi setiap operasi penulisan file (`Write`, `Edit`, `MultiEdit`, `NotebookEdit`) pada berkas prosa (`.md`, `.txt`, `.adoc`, `.rst`, `.html`).
-   - Jika terdeteksi *hard violations* (seperti em dash, curly quotes, chatbot residue, staged run-ups, aphorisms, formula not-X-but-Y, atau klaim hiperbolik), operasi **otomatis di-deny (diblokir)** oleh hook, dan agen diarahkan untuk menulis ulang dengan gaya manusia.
+All scripts run on Node with no external dependencies.
 
-3. **Audit Pasca Tulis (`PostToolUse`)**
-   - Melakukan pemindaian sekunder terhadap file hasil akhir untuk memverifikasi kepadatan kata kunci AI (*density watchlist*) antar seksi.
+## The rules engine
 
-4. **Audit Respons Percakapan Langsung (`Stop`)**
-   - Saat agen selesai merespons sebelum mengakhiri turn, hook memeriksa transcript respons asisten. Jika ada formula obrolan chatbot seperti *"Certainly!"*, *"I hope this helps!"*, atau penggunaan em dash, hook memberikan feedback pengingat ke agen.
+`lib/rules.cjs` implements three tiers:
 
-5. **Pengecualian Cerdas (*Safe Bypasses*)**
-   - Mengabaikan blok kode (*fenced code* ` ``` `), kode sebaris (*inline code*), link/URL, dan frontmatter YAML agar tidak terjadi *false positive* pada kode program atau konfigurasi teknis.
-   - Mendukung tag komentar lewati: `<!-- humanizer:skip -->`.
+1. **Hard rules (zero tolerance, first sighting blocks):** em/en dashes, double hyphens as dashes, curly quotes and apostrophes, chatbot residue, not-X-but-Y formulas, dramatic closers, period fragmentation (`every. single. day.`), pseudo-profound aphorisms, staged run-ups ("Let's dive in"), fake objections ("This isn't mainly about..."), inflated significance, and emoji headers.
+2. **Density watchlist (per section):** watchlist vocabulary and shallow `-ing` riders. Triggers when a term appears 2+ times or 3+ distinct watchlist terms appear in one section.
+3. **Response audit:** checks the final assistant response for chatbot residue.
 
-6. **Skill & Manual Command Tersedia**
-   - Tetap menyediakan skill `humanizer:humanizer` sebagai referensi penuh.
-   - Menyediakan perintah `/audit <filepath>` jika ingin melakukan audit manual pada berkas lama.
+The scanner strips non-prose regions before matching, so YAML frontmatter, fenced code blocks, inline code, URLs, markdown tables, and HTML comments do not cause false positives. Edits fully inside a code fence are never blocked.
 
----
+## What gets scanned
 
-## Aturan yang Ditegakkan
+Only prose files are checked: `.md`, `.mdx`, `.markdown`, `.txt`, `.adoc`, `.rst`, and `.html`.
 
-Berdasarkan 25 aturan penulisan *blader/humanizer*:
+To exempt a file, add a skip marker anywhere in it:
 
-- **Tanda Baca & Tipografi:** Tanpa em dash (`—`), en dash (`–`), atau double hyphen (`--`). Hanya tanda petik lurus (`"..."` dan `'`).
-- **Residu Chatbot:** Larangan keras terhadap formula pembuka/penutup chatbot (*"Certainly!"*, *"Great question!"*, *"I hope this helps!"*, *"Let me know if you need anything else!"*).
-- **Tanpa Staging:**
-  - Larangan formula kontras *"not X but Y"* (*"It's not just about speed, it's about control"*).
-  - Larangan penutup satu kalimat dramatis (*"That is the real win."*, *"Let that sink in."*).
-  - Larangan peribahasa klise (*"at its core"*, *"what really matters"*, *"the heart of the matter"*).
-  - Larangan *run-up* bertele-tele (*"Let's dive in"*, *"Here's what you need to know"*, *"Without further ado"*).
-  - Larangan membantah bayangan (*"This isn't about..."*, *"Don't get me wrong..."*).
-- **Tanpa Inflasi & Klise Korporat:**
-  - Tanpa klaim warisan muluk (*"stands as a testament"*, *"plays a pivotal role"*, *"indelible mark"*).
-  - Larangan *shallow -ing riders* (*"underscoring"*, *"highlighting"*, *"symbolizing"*).
-  - Batasan kepadatan kosakata AI (*delve, tapestry, testament, intricate, robust, seamless, streamline, supercharge, leverage, vibrant, landscape, interplay*).
-- **Format Bersih:**
-  - Tanpa emoji dekoratif di judul atau poin daftar (`🚀`, `💡`).
-  - Tanpa penebalan seragam di setiap butir list (`- **Label:** teks`).
-  - Judul tidak boleh diulang di kalimat pertama tepat di bawahnya.
-
----
-
-## Struktur Direktori Plugin
-
-```text
-cc-humanizer/
-├── .claude-plugin/
-│   └── plugin.json           # Manifest resmi plugin Claude Code
-├── hooks/
-│   ├── hooks.json            # Konfigurasi lifecycle hooks (SessionStart, PreToolUse, PostToolUse, Stop)
-│   ├── session-start.cjs     # Hook injeksi aturan ke konteks sesi
-│   ├── scan.cjs              # Hook audit pre-write (deny) dan post-write
-│   └── stop-audit.cjs        # Hook audit respons asisten
-├── lib/
-│   └── rules.cjs             # Rules engine mandiri (tanpa dependensi eksternal)
-├── skills/
-│   └── humanizer/
-│       └── SKILL.md          # Spesifikasi lengkap humanizer (v3.0.0)
-├── commands/
-│   └── audit.md              # Command manual /audit <file>
-├── tests/
-│   └── run-tests.cjs         # Unit test suite untuk engine & aturan
-└── README.md
+```markdown
+<!-- humanizer:skip -->
 ```
 
----
+(`<!-- cchuman:skip -->` works too.)
 
-## Cara Menggunakan Plugin
+## Installation
 
-### Opsi 1: Pasang via Marketplace (Direkomendasikan)
-Tambahkan project ini sebagai marketplace di Claude Code:
+This repo is also a plugin marketplace. From Claude Code:
 
-```powershell
-claude plugin marketplace add "C:\Users\Xevalous\Codes\Claude\cc-humanizer"
-claude plugin install humanizer@cc-humanizer
+```
+/plugin marketplace add Xevalous/cc-humanizer
+/plugin install humanizer@cc-humanizer
 ```
 
-Jika di-host di GitHub (`https://github.com/<owner>/cc-humanizer`):
-```powershell
-claude plugin marketplace add https://github.com/<owner>/cc-humanizer.git
-claude plugin install humanizer@cc-humanizer
+The plugin is enabled by default (`defaultEnabled: true`); hooks activate on the next session start.
+
+## Usage
+
+- **Automatic:** hooks run on their own. If a write is blocked, the hook returns a structured deny decision listing the violations and how to fix each one; the model rewrites and tries again.
+- **`/audit <file path>`:** run a manual audit on any prose file. It reports violations grouped by hard rules and the density watchlist, then fixes them following the humanizer guidelines.
+- **Skill (`humanizer`):** invoke it on any text to rewrite AI-sounding prose into natural writing without changing what it says. It covers 25 numbered patterns, strongest first, and matches the writer's voice when a writing sample is given.
+
+## Repository layout
+
+```
+commands/audit.md        /audit slash command
+hooks/hooks.json         hook registration
+hooks/session-start.cjs  SessionStart: inject guidelines
+hooks/scan.cjs           PreToolUse / PostToolUse scans
+hooks/stop-audit.cjs     Stop: response audit
+lib/rules.cjs            rules engine (hard rules, density, response audit)
+skills/humanizer/        SKILL.md: the rewriting skill
+tests/run-tests.cjs      test suite
 ```
 
-### Opsi 2: Muat Langsung untuk Sesi Saat Ini
-Jalankan Claude Code dengan flag `--plugin-dir`:
+## Testing
 
-```powershell
-claude --plugin-dir "C:\Users\Xevalous\Codes\Claude\cc-humanizer"
 ```
-
----
-
-## Menjalankan Pengujian
-
-Plugin ini telah dilengkapi dengan unit test tanpa dependensi eksternal:
-
-```powershell
 node tests/run-tests.cjs
 ```
 
-Semua 15 skenario pengujian aturan penulisan dan mekanisme hooks teruji berhasil.
+## Credits
+
+- Rules and skill derived from [blader/humanizer](https://github.com/blader/humanizer).
+- Patterns come from Wikipedia's ["Signs of AI writing"](https://en.wikipedia.org/wiki/Wikipedia:Signs_of_AI_writing), maintained by WikiProject AI Cleanup.
+
+## License
+
+MIT
