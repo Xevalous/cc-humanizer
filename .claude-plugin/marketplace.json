@@ -1,0 +1,34 @@
+{
+  "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
+  "name": "cc-humanizer",
+  "owner": {
+    "name": "Xevalous"
+  },
+  "metadata": {
+    "description": "Anti-AI writing enforcement & automated audit marketplace for Claude Code",
+    "version": "1.0.0"
+  },
+  "plugins": [
+    {
+      "name": "humanizer",
+      "source": "./",
+      "description": "Automatically audits and enforces human writing rules from blader/humanizer. Hard-blocks em dashes, curly quotes, chatbot residue, and inflated claims on file writes and reviews agent output.",
+      "version": "1.0.0",
+      "author": {
+        "name": "Xevalous"
+      },
+      "license": "MIT",
+      "keywords": [
+        "humanizer",
+        "writing",
+        "anti-ai",
+        "style",
+        "prose",
+        "audit",
+        "enforcement",
+        "hooks"
+      ],
+      "category": "writing"
+    }
+  ]
+}

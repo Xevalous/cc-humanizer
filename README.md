@@ -82,20 +82,26 @@ cc-humanizer/
 
 ## Cara Menggunakan Plugin
 
-### Opsi 1: Muat Langsung untuk Sesi Saat Ini
+### Opsi 1: Pasang via Marketplace (Direkomendasikan)
+Tambahkan project ini sebagai marketplace di Claude Code:
+
+```powershell
+claude plugin marketplace add "C:\Users\Xevalous\Codes\Claude\cc-humanizer"
+claude plugin install humanizer@cc-humanizer
+```
+
+Jika di-host di GitHub (`https://github.com/<owner>/cc-humanizer`):
+```powershell
+claude plugin marketplace add https://github.com/<owner>/cc-humanizer.git
+claude plugin install humanizer@cc-humanizer
+```
+
+### Opsi 2: Muat Langsung untuk Sesi Saat Ini
 Jalankan Claude Code dengan flag `--plugin-dir`:
 
 ```powershell
 claude --plugin-dir "C:\Users\Xevalous\Codes\Claude\cc-humanizer"
 ```
-
-### Opsi 2: Pasang Secara Global / Project
-Anda dapat menginstal atau mendaftarkan plugin ini ke konfigurasi plugin Claude Code:
-
-```powershell
-claude plugin install "C:\Users\Xevalous\Codes\Claude\cc-humanizer"
-```
-*(atau tambahkan path direktori ke `known_marketplaces` / plugins directory)*
 
 ---
 
