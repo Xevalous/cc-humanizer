@@ -1,0 +1,26 @@
+{
+  // Example OpenCode configuration for the humanizer plugin.
+  // Copy the "plugins" entry into your own opencode.jsonc.
+  // No npm publish needed: OpenCode installs straight from GitHub.
+  "$schema": "https://opencode.ai/config.json",
+  "plugins": [
+    // Option A: install once from GitHub (recommended).
+    // Run: opencode plugin add github:Xevalous/cc-humanizer
+    // ...then no local "plugins" entry is needed at all.
+
+    // Option B: point at a local checkout (this repo).
+    // "./"
+
+    // Option C: local checkout with options.
+    {
+      "package": "./",
+      "options": {
+        // false = warn instead of blocking prose writes (default true)
+        "strict": true,
+        // true = turn every humanizer hook off (default false).
+        // Env HUMANIZER_DISABLE=1 does the same.
+        "disabled": false
+      }
+    }
+  ]
+}

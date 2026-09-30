@@ -1,0 +1,40 @@
+{
+  "name": "opencode-humanizer",
+  "version": "1.1.0",
+  "description": "OpenCode plugin that audits and enforces human writing rules (blader/humanizer, Wikipedia Signs of AI writing). Dual-compatible companion to the cc-humanizer Claude Code plugin.",
+  "type": "module",
+  "license": "MIT",
+  "homepage": "https://github.com/Xevalous/cc-humanizer",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Xevalous/cc-humanizer.git"
+  },
+  "keywords": [
+    "opencode",
+    "opencode-plugin",
+    "humanizer",
+    "writing",
+    "anti-ai",
+    "style",
+    "prose",
+    "audit"
+  ],
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "files": [
+    "src",
+    "skills",
+    ".opencode",
+    "README.md"
+  ],
+  "scripts": {
+    "test": "node tests/run-tests.cjs && node tests/run-opencode-tests.mjs"
+  },
+  "dependencies": {
+    "@opencode/plugin": "^2.0.20"
+  },
+  "devDependencies": {
+    "typescript": "5.9"
+  }
+}

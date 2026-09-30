@@ -50,6 +50,35 @@ This repo is also a plugin marketplace. From Claude Code:
 
 The plugin is enabled by default (`defaultEnabled: true`); hooks activate on the next session start.
 
+## OpenCode support
+
+This repo doubles as an OpenCode plugin (no npm publish; install straight from GitHub):
+
+```
+opencode plugin add github:Xevalous/cc-humanizer
+```
+
+Or point a local checkout from `opencode.jsonc` (see `opencode.example.jsonc`):
+
+```jsonc
+{ "plugins": ["./path/to/cc-humanizer"] }
+```
+
+What the OpenCode side wires up (`src/index.ts`):
+
+| Claude hook | OpenCode equivalent |
+|---|---|
+| `SessionStart` injects guidelines | `session` `"context"` hook pushes the same guidelines into `event.system` |
+| `PreToolUse` blocks prose writes | `tool` `"execute.before"` hook on `write`/`edit`/`patch`; throws the violation reason so the agent rewrites (mirrors the deny flow) |
+| `PostToolUse` backstop | `tool` `"execute.after"` hook that logs violations to the server log |
+| `Stop` response audit | No OpenCode equivalent; enforcement relies on the guidelines plus write blocking |
+| `/audit` command | Registered via `command.transform` (plus file `.opencode/commands/audit.md` for local checkouts, backed by `src/audit-cli.mjs`) |
+| `humanizer` skill | Registered via `skill.transform` when absent (plus file `.opencode/skills/humanizer/SKILL.md`, kept identical to `skills/humanizer/SKILL.md`) |
+
+Options: `{ "strict": false }` warns instead of blocking; `{ "disabled": true }` or `HUMANIZER_DISABLE=1` turns every hook off.
+
+Keep in sync when editing rules: `src/rules.mjs` mirrors `lib/rules.cjs`, and `.opencode/skills/humanizer/SKILL.md` mirrors `skills/humanizer/SKILL.md`. `npm test` runs both suites (`tests/run-tests.cjs` + `tests/run-opencode-tests.mjs`); typecheck the plugin with `npx tsc --noEmit`.
+
 ## Usage
 
 - **Automatic:** hooks run on their own. If a write is blocked, the hook returns a structured deny decision listing the violations and how to fix each one; the model rewrites and tries again.
