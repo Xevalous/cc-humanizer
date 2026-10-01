@@ -30,7 +30,7 @@
     "README.md"
   ],
   "scripts": {
-    "test": "node tests/run-tests.cjs && node tests/run-pi-tests.mjs"
+    "test": "node tests/run-tests.cjs && node tests/run-pi-tests.mjs && node tests/run-pi-functional.mjs"
   },
   "peerDependencies": {
     "@earendil-works/pi-ai": "*",
