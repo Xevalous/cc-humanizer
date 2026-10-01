@@ -1,0 +1,53 @@
+{
+  "name": "humanizer",
+  "version": "1.2.0",
+  "description": "Human writing enforcement (blader/humanizer, Wikipedia Signs of AI writing) for Claude Code and Pi from one codebase: hooks/write-blocking, /audit, and a rewriting skill.",
+  "type": "module",
+  "license": "MIT",
+  "homepage": "https://github.com/Xevalous/cc-humanizer",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Xevalous/cc-humanizer.git"
+  },
+  "keywords": [
+    "humanizer",
+    "writing",
+    "anti-ai",
+    "style",
+    "prose",
+    "audit",
+    "claude-code",
+    "claude-code-plugin",
+    "pi",
+    "pi-package",
+    "pi-extension"
+  ],
+  "files": [
+    "lib",
+    "skills",
+    "extensions",
+    "prompts",
+    "README.md"
+  ],
+  "scripts": {
+    "test": "node tests/run-tests.cjs && node tests/run-pi-tests.mjs"
+  },
+  "peerDependencies": {
+    "@earendil-works/pi-ai": "*",
+    "@earendil-works/pi-coding-agent": "*"
+  },
+  "peerDependenciesMeta": {
+    "@earendil-works/pi-ai": {
+      "optional": true
+    },
+    "@earendil-works/pi-coding-agent": {
+      "optional": true
+    }
+  },
+  "devDependencies": {
+    "@earendil-works/pi-ai": "^0.99.2",
+    "@earendil-works/pi-coding-agent": "^0.99.2",
+    "@types/node": "^26.0.0",
+    "typescript": "5.9"
+  }
+}
