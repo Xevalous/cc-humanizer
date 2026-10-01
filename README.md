@@ -1,6 +1,6 @@
-# cc-humanizer
+# humanizer
 
-A Claude Code plugin that audits and enforces human writing rules, based on [blader/humanizer](https://github.com/blader/humanizer) and Wikipedia's ["Signs of AI writing"](https://en.wikipedia.org/wiki/Wikipedia:Signs_of_AI_writing).
+One codebase that audits and enforces human writing rules in three agents, based on [blader/humanizer](https://github.com/blader/humanizer) and Wikipedia's ["Signs of AI writing"](https://en.wikipedia.org/wiki/Wikipedia:Signs_of_AI_writing): **Claude Code** (hooks plugin), **OpenCode** (TypeScript plugin), and **Pi** (package with extension + prompt template + skill).
 
 It stops AI tells before they land: em dashes, curly quotes, chatbot residue ("Great question!"), not-X-but-Y staging, dramatic closers, inflated claims, decorative bolding, and watchlist vocabulary. Enforcement happens automatically through hooks across the whole session, plus a manual `/audit` command and a full rewriting skill.
 
@@ -41,6 +41,8 @@ To exempt a file, add a skip marker anywhere in it:
 
 ## Installation
 
+### Claude Code
+
 This repo is also a plugin marketplace. From Claude Code:
 
 ```
@@ -50,7 +52,7 @@ This repo is also a plugin marketplace. From Claude Code:
 
 The plugin is enabled by default (`defaultEnabled: true`); hooks activate on the next session start.
 
-## OpenCode support
+### OpenCode
 
 This repo doubles as an OpenCode plugin (no npm publish; install straight from GitHub):
 
@@ -77,7 +79,46 @@ What the OpenCode side wires up (`src/index.ts`):
 
 Options: `{ "strict": false }` warns instead of blocking; `{ "disabled": true }` or `HUMANIZER_DISABLE=1` turns every hook off.
 
-Keep in sync when editing rules: `src/rules.mjs` mirrors `lib/rules.cjs`, and `.opencode/skills/humanizer/SKILL.md` mirrors `skills/humanizer/SKILL.md`. `npm test` runs both suites (`tests/run-tests.cjs` + `tests/run-opencode-tests.mjs`); typecheck the plugin with `npx tsc --noEmit`.
+### Pi
+
+This repo is also a Pi package (conventional `extensions/`, `prompts/`, `skills/` directories, no npm publish needed). Install from GitHub:
+
+```
+pi install git:github.com/Xevalous/cc-humanizer
+```
+
+Or point at a local checkout:
+
+```
+pi install ./path/to/cc-humanizer
+```
+
+Try it once without installing:
+
+```
+pi -e ./path/to/cc-humanizer
+```
+
+During development, load the extension file directly (it resolves `../src/rules.mjs` relative to itself, so keep it inside the checkout):
+
+```
+pi --extension ./extensions/humanizer.ts
+```
+
+What the Pi side wires up (`extensions/humanizer.ts`):
+
+| Claude hook | Pi equivalent |
+|---|---|
+| `SessionStart` injects guidelines | `before_agent_start` appends the same guidelines to the system prompt every turn |
+| `PreToolUse` blocks prose writes | `tool_call` on Pi's `write`/`edit` tools; returns `{ block: true, reason }` so the agent rewrites (mirrors the deny flow) |
+| `PostToolUse` backstop | `tool_result` on `write`/`edit` that warns on violations (the write already happened) |
+| `Stop` response audit | `message_end` on assistant messages that warns on chatbot residue (warn-only, like the Claude Stop hook) |
+| `/audit` command | Prompt template `prompts/audit.md`, which prefers the engine-powered `humanizer_audit` tool the extension registers (falls back to a self-contained manual scan when the extension is not loaded) |
+| `humanizer` skill | `skills/humanizer/SKILL.md` is discovered by Pi natively (Agent Skills spec) |
+
+Options: `HUMANIZER_STRICT=0` warns instead of blocking; `HUMANIZER_DISABLE=1` turns every hook and the audit tool off.
+
+Keep in sync when editing rules: `src/rules.mjs` mirrors `lib/rules.cjs` (the Pi extension imports the ESM copy, so all three agents share one engine), and `.opencode/skills/humanizer/SKILL.md` mirrors `skills/humanizer/SKILL.md` (Pi reads `skills/` directly). `prompts/audit.md` is Pi-only: it embeds a condensed rule list so `/audit` still works when the extension is filtered out. `npm test` runs all three suites (`tests/run-tests.cjs` + `tests/run-opencode-tests.mjs` + `tests/run-pi-tests.mjs`); typecheck with `npx tsc --noEmit` (covers `src/` and `extensions/`).
 
 ## Usage
 
@@ -88,20 +129,29 @@ Keep in sync when editing rules: `src/rules.mjs` mirrors `lib/rules.cjs`, and `.
 ## Repository layout
 
 ```
-commands/audit.md        /audit slash command
-hooks/hooks.json         hook registration
-hooks/session-start.cjs  SessionStart: inject guidelines
-hooks/scan.cjs           PreToolUse / PostToolUse scans
-hooks/stop-audit.cjs     Stop: response audit
-lib/rules.cjs            rules engine (hard rules, density, response audit)
-skills/humanizer/        SKILL.md: the rewriting skill
-tests/run-tests.cjs      test suite
+commands/audit.md          /audit slash command (Claude Code)
+hooks/hooks.json           hook registration (Claude Code)
+hooks/session-start.cjs    SessionStart: inject guidelines
+hooks/scan.cjs             PreToolUse / PostToolUse scans
+hooks/stop-audit.cjs       Stop: response audit
+lib/rules.cjs              rules engine (hard rules, density, response audit)
+skills/humanizer/          SKILL.md: the rewriting skill (Claude Code + Pi)
+src/index.ts               OpenCode plugin (context + tool hooks, /audit, skill)
+src/rules.mjs              rules engine, ESM mirror of lib/rules.cjs (OpenCode + Pi)
+src/audit-cli.mjs          audit CLI backing the OpenCode /audit command
+extensions/humanizer.ts    Pi extension (prompt inject, write blocking, backstop,
+                           response notice, humanizer_audit tool)
+prompts/audit.md           /audit prompt template (Pi)
+tests/run-tests.cjs        engine test suite (Claude Code)
+tests/run-opencode-tests.mjs  OpenCode layer tests (parity, CLI, presence)
+tests/run-pi-tests.mjs     Pi layer tests (wiring, manifest, skill, smoke)
 ```
 
 ## Testing
 
 ```
-node tests/run-tests.cjs
+npm test            # engine + OpenCode + Pi suites
+npx tsc --noEmit   # typecheck src/ and extensions/
 ```
 
 ## Credits

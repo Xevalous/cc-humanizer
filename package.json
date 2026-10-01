@@ -1,7 +1,7 @@
 {
-  "name": "opencode-humanizer",
-  "version": "1.1.0",
-  "description": "OpenCode plugin that audits and enforces human writing rules (blader/humanizer, Wikipedia Signs of AI writing). Dual-compatible companion to the cc-humanizer Claude Code plugin.",
+  "name": "humanizer",
+  "version": "1.2.0",
+  "description": "Human writing enforcement (blader/humanizer, Wikipedia Signs of AI writing) for Claude Code, OpenCode, and Pi from one codebase: hooks/write-blocking, /audit, and a rewriting skill.",
   "type": "module",
   "license": "MIT",
   "homepage": "https://github.com/Xevalous/cc-humanizer",
@@ -10,31 +10,53 @@
     "url": "https://github.com/Xevalous/cc-humanizer.git"
   },
   "keywords": [
-    "opencode",
-    "opencode-plugin",
     "humanizer",
     "writing",
     "anti-ai",
     "style",
     "prose",
-    "audit"
+    "audit",
+    "claude-code",
+    "claude-code-plugin",
+    "opencode",
+    "opencode-plugin",
+    "pi",
+    "pi-package",
+    "pi-extension"
   ],
   "exports": {
     ".": "./src/index.ts"
   },
   "files": [
     "src",
+    "lib",
     "skills",
+    "extensions",
+    "prompts",
     ".opencode",
     "README.md"
   ],
   "scripts": {
-    "test": "node tests/run-tests.cjs && node tests/run-opencode-tests.mjs"
+    "test": "node tests/run-tests.cjs && node tests/run-opencode-tests.mjs && node tests/run-pi-tests.mjs"
   },
   "dependencies": {
     "@opencode/plugin": "^2.0.20"
   },
+  "peerDependencies": {
+    "@earendil-works/pi-ai": "*",
+    "@earendil-works/pi-coding-agent": "*"
+  },
+  "peerDependenciesMeta": {
+    "@earendil-works/pi-ai": {
+      "optional": true
+    },
+    "@earendil-works/pi-coding-agent": {
+      "optional": true
+    }
+  },
   "devDependencies": {
+    "@earendil-works/pi-ai": "^0.99.2",
+    "@earendil-works/pi-coding-agent": "^0.99.2",
     "typescript": "5.9"
   }
 }
