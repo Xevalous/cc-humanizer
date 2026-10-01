@@ -29,6 +29,11 @@
     "prompts",
     "README.md"
   ],
+  "pi": {
+    "extensions": ["extensions/humanizer.ts"],
+    "prompts": ["prompts/audit.md"],
+    "skills": ["skills/humanizer"]
+  },
   "scripts": {
     "test": "node tests/run-tests.cjs && node tests/run-pi-tests.mjs && node tests/run-pi-functional.mjs"
   },

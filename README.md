@@ -64,10 +64,10 @@ Or point at a local checkout:
 pi install ./path/to/cc-humanizer
 ```
 
-Try it once without installing (point at the file, not the package dir):
+Try it once without installing (directory or file both work — `package.json` declares an explicit `pi` manifest):
 
 ```
-pi -e ./path/to/cc-humanizer/extensions/humanizer.ts
+pi -e ./path/to/cc-humanizer
 ```
 
 During development, load the extension file directly (`lib/rules.cjs` resolves relative to it, so keep the file inside the checkout):
@@ -83,7 +83,7 @@ What the Pi side wires up (`extensions/humanizer.ts`):
 | `SessionStart` injects guidelines | `before_agent_start` replaces the system prompt once per agent run (persists for the run) |
 | `PreToolUse` blocks prose writes | `tool_call` on Pi's `write`/`edit` tools; returns `{ block: true, reason }` so the agent rewrites (mirrors the deny flow) |
 | `PostToolUse` backstop | `tool_result` on `write`/`edit` that warns on violations (the write already happened) |
-| `Stop` response audit | `message_end` on assistant messages: user-visible warning only (`ui.notify`/stderr). Unlike Claude's `Stop` hook (`systemMessage`, model-visible), it cannot steer the model or trigger a rewrite |
+| `Stop` response audit | `message_end` warns (user toast) + stages the notice; `context` injects it as a system message into the next LLM request (model-visible, like Claude's `Stop` `systemMessage`; consumed once, forces no extra turn) |
 | `/audit` command | Prompt template `prompts/audit.md`, which prefers the engine-powered `humanizer_audit` tool the extension registers (falls back to a self-contained manual scan when the extension is not loaded) |
 | `humanizer` skill | `skills/humanizer/SKILL.md` is discovered by Pi natively (Agent Skills spec) |
 

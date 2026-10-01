@@ -8,6 +8,7 @@
 //   4. tool_result backstop (warn-only)
 //   5. message_end audit (warn-only, assistant text only)
 //   6. humanizer_audit tool (inline/file/skip/non-prose/errors/DISABLE)
+//   7. context injection (staged notice delivered once, model-visible)
 //
 // Run: node tests/run-pi-functional.mjs (wired into `npm test`).
 import assert from "node:assert/strict";
@@ -113,7 +114,7 @@ const DENSITY_SENTENCE =
   withEnv({ HUMANIZER_DISABLE: undefined }, () => {
     const { pi, handlers, tools } = createMockPi();
     factory(pi);
-    for (const event of ["before_agent_start", "tool_call", "tool_result", "message_end"]) {
+    for (const event of ["before_agent_start", "tool_call", "tool_result", "message_end", "context"]) {
       assert.ok((handlers.get(event) ?? []).length === 1, `${event} handler registered`);
     }
     assert.ok(tools.has("humanizer_audit"), "humanizer_audit tool registered");
@@ -569,6 +570,107 @@ const DENSITY_SENTENCE =
     fs.rmSync(cwd, { recursive: true, force: true });
   }
   console.log("PASS humanizer_audit scans inline/file text (skip/non-prose/errors covered)");
+}
+
+// --- 7. context injection (model-visible half of the Stop equivalent) --------
+// Fresh module instance so pendingResponseNotice starts empty (earlier groups
+// stage notices in the shared instance via message_end).
+{
+  const fresh = await import(`${extUrl}?context=1`);
+  const freshFactory = fresh.default;
+  const { pi, handlers } = createMockPi();
+  withEnv({ HUMANIZER_DISABLE: undefined }, () => freshFactory(pi));
+
+  const baseMessages = [
+    { role: "user", content: "Summarize the plan.", timestamp: 1 },
+    { role: "assistant", content: [{ type: "text", text: CLEAN }], timestamp: 2 },
+  ];
+  const contextEvent = () => ({ type: "context", messages: baseMessages.slice() });
+  const { ctx } = mockCtx(process.cwd());
+
+  // 7a. nothing staged -> no-op undefined, input untouched (cached prefix kept).
+  {
+    const evt = contextEvent();
+    const out = await withEnv({ HUMANIZER_DISABLE: undefined }, () =>
+      callOnlyHandler(handlers, "context", evt, ctx),
+    );
+    assert.equal(out, undefined, "no pending notice is a no-op");
+    assert.deepEqual(evt.messages, baseMessages, "input messages untouched");
+  }
+
+  // 7b. violation stages a notice; context delivers it once as a system message.
+  let toasted;
+  {
+    const { ctx: mctx, notifications } = mockCtx(process.cwd());
+    await withEnv({ HUMANIZER_DISABLE: undefined }, () =>
+      callOnlyHandler(
+        handlers,
+        "message_end",
+        { type: "message_end", message: { role: "assistant", content: [{ type: "text", text: CHATBOT }] } },
+        mctx,
+      ),
+    );
+    assert.equal(notifications.length, 1, "user toast still shown");
+    toasted = notifications[0].message;
+
+    const evt = contextEvent();
+    const out = await withEnv({ HUMANIZER_DISABLE: undefined }, () =>
+      callOnlyHandler(handlers, "context", evt, ctx),
+    );
+    assert.ok(out && Array.isArray(out.messages), "context returns replacement messages");
+    assert.equal(out.messages.length, baseMessages.length + 1, "exactly one message appended");
+    assert.deepEqual(out.messages.slice(0, -1), baseMessages, "original messages preserved in order");
+    const injected = out.messages[out.messages.length - 1];
+    assert.equal(injected.role, "system", "injected as system message (model-visible)");
+    assert.equal(injected.content, toasted, "model sees the same text the user toasted");
+    assert.ok(injected.content.includes("HUMANIZER AUDIT NOTICE"), "notice text carried over");
+    assert.equal(typeof injected.timestamp, "number", "system message carries a timestamp");
+    assert.deepEqual(evt.messages, baseMessages, "handler does not mutate the input list");
+  }
+
+  // 7c. consumed once: second call is a no-op again.
+  {
+    const out = await withEnv({ HUMANIZER_DISABLE: undefined }, () =>
+      callOnlyHandler(handlers, "context", contextEvent(), ctx),
+    );
+    assert.equal(out, undefined, "staged notice consumed exactly once");
+  }
+
+  // 7d. clean response stages nothing.
+  {
+    const { ctx: mctx, notifications } = mockCtx(process.cwd());
+    await withEnv({ HUMANIZER_DISABLE: undefined }, () =>
+      callOnlyHandler(
+        handlers,
+        "message_end",
+        { type: "message_end", message: { role: "assistant", content: [{ type: "text", text: CLEAN }] } },
+        mctx,
+      ),
+    );
+    assert.equal(notifications.length, 0, "no toast for clean response");
+    const out = await withEnv({ HUMANIZER_DISABLE: undefined }, () =>
+      callOnlyHandler(handlers, "context", contextEvent(), ctx),
+    );
+    assert.equal(out, undefined, "clean response stages no notice");
+  }
+
+  // 7e. DISABLE suppresses both staging and delivery.
+  {
+    const { ctx: mctx } = mockCtx(process.cwd());
+    await withEnv({ HUMANIZER_DISABLE: "1" }, () =>
+      callOnlyHandler(
+        handlers,
+        "message_end",
+        { type: "message_end", message: { role: "assistant", content: [{ type: "text", text: CHATBOT }] } },
+        mctx,
+      ),
+    );
+    const out = await withEnv({ HUMANIZER_DISABLE: "1" }, () =>
+      callOnlyHandler(handlers, "context", contextEvent(), ctx),
+    );
+    assert.equal(out, undefined, "DISABLE suppresses context delivery");
+  }
+  console.log("PASS context injects staged notice once as a system message");
 }
 
 console.log("All Pi functional tests passed.");

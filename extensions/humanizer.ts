@@ -16,12 +16,12 @@
 //                              Claude "deny" + permissionDecisionReason flow)
 //   PostToolUse             -> "tool_result" on write/edit (backstop: warn
 //                              only, the write already happened)
-//   Stop (response audit)   -> "message_end" on assistant messages (user-
-//                              visible warning only via ui.notify/console.
-//                              Unlike Claude's Stop hook which warns via
-//                              systemMessage (model-visible), Pi's
-//                              message_end cannot steer the model, so this
-//                              does not trigger a rewrite.)
+//   Stop (response audit)   -> "message_end" (user-visible warning) plus
+//                              "context" (inject the staged notice as a
+//                              system message into the next LLM request,
+//                              model-visible like Claude's Stop hook
+//                              systemMessage; consumed once, forces no
+//                              extra turn, cannot loop)
 //
 // Manual audit: the /audit prompt template (prompts/audit.md) calls the
 // humanizer_audit tool below, so the agent can scan without knowing this
@@ -129,6 +129,15 @@ You MUST follow these rules based on blader/humanizer (Wikipedia: Signs of AI wr
 
 Automatic hooks are active: write/edit calls touching prose files (.md, .mdx, .markdown, .txt, .adoc, .rst, .html) are blocked when they violate these rules. Use /audit for a manual file audit (powered by the humanizer_audit tool when available) and the humanizer skill for full rewrites.`;
 
+// Pending model-visible reminder, set by message_end and consumed once by
+// the context handler below. Module-level because the two events fire at
+// different times (message end, then next request build). Only ever holds a
+// notice for a real violation, and the notice itself is a system message so
+// it is never re-audited: no self-triggering loop.
+
+// Pi's file-writing tools (Claude's Write/Edit/MultiEdit/NotebookEdit equivalent;
+// Pi splits precise edits and full writes into edit and write).
+
 function isStrict(): boolean {
   return process.env.HUMANIZER_STRICT !== "0";
 }
@@ -137,8 +146,7 @@ function isDisabled(): boolean {
   return process.env.HUMANIZER_DISABLE === "1";
 }
 
-// Pi's file-writing tools (Claude's Write/Edit/MultiEdit/NotebookEdit equivalent;
-// Pi splits precise edits and full writes into edit and write).
+let pendingResponseNotice: string | null = null;
 
 function readFileSafe(filePath: string): string | null {
   try {
@@ -390,10 +398,14 @@ export default function (pi: ExtensionAPI) {
     return undefined;
   });
 
-  // Stop equivalent: audit the assistant message for chatbot residue.
-  // User-visible warning only (ui.notify/console). Unlike Claude's Stop hook
-  // (systemMessage, model-visible), this cannot steer the model or trigger
-  // a rewrite; it only notifies the user to avoid infinite loops.
+  // Stop equivalent, two halves:
+  // - message_end audits the assistant message for chatbot residue and shows
+  //   a user-visible warning (ui.notify/console). This alone cannot steer
+  //   the model, so it also stages the notice in pendingResponseNotice.
+  // - the context handler below injects that staged notice as a system
+  //   message into the next LLM request (model-visible, like Claude's Stop
+  //   hook systemMessage). Consumed once, so no extra turn is forced and no
+  //   loop is possible: with no further request the notice simply expires.
   pi.on("message_end", async (event, ctx) => {
     if (isDisabled()) return undefined;
     const text = assistantTextOf(event.message);
@@ -405,9 +417,27 @@ export default function (pi: ExtensionAPI) {
       "[HUMANIZER AUDIT NOTICE]\nAssistant response contained AI conversational patterns:\n" +
       summary +
       "\nWrite natural, direct prose without canned phrases or em dashes.";
+    pendingResponseNotice = notice;
     if (ctx.hasUI) ctx.ui.notify(notice, "warning");
     else console.error(notice);
     return undefined;
+  });
+
+  // Model-visible half of the Stop equivalent: inject the staged notice
+  // as a system message for the model to see on its next request. Returns
+  // undefined (a no-op that preserves Pi's cached prompt prefix) when
+  // nothing is pending.
+  pi.on("context", async (event) => {
+    if (isDisabled()) return undefined;
+    if (pendingResponseNotice === null) return undefined;
+    const notice = pendingResponseNotice;
+    pendingResponseNotice = null;
+    return {
+      messages: [
+        ...event.messages,
+        { role: "system", content: notice, timestamp: Date.now() },
+      ],
+    };
   });
 
   // Engine-powered audit for the /audit prompt template (prompts/audit.md).

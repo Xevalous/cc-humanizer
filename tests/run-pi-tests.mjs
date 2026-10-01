@@ -27,6 +27,8 @@ for (const needle of [
   '"tool_call"',
   '"tool_result"',
   '"message_end"',
+  '"context"',
+  "pendingResponseNotice",
   "registerTool",
   "humanizer_audit",
   "defineTool",
@@ -70,7 +72,7 @@ for (const ch of ["\u2014", "\u2013", "\u201c", "\u201d", "\u2019"]) {
   assert.ok(!ext.includes(ch), "extensions/humanizer.ts must not contain fancy punctuation U+" + ch.codePointAt(0).toString(16));
 }
 assert.ok(ext.includes("export default function"), "extension must default-export a factory");
-console.log("PASS extensions/humanizer.ts wires Pi hooks (prompt inject, block, backstop, audit) + tool");
+console.log("PASS extensions/humanizer.ts wires Pi hooks (prompt inject, block, backstop, audit, context) + tool");
 
 // --- 2. prompts/audit.md presence + content ---
 const promptPath = path.join(root, "prompts", "audit.md");
@@ -107,7 +109,17 @@ assert.ok(!(pkg.dependencies && ("@earendil-works/pi-coding-agent" in pkg.depend
   "host-provided Pi packages must not be in dependencies");
 assert.ok(typeof pkg.scripts?.test === "string" && pkg.scripts.test.includes("run-pi-tests.mjs"), "npm test must run the Pi suite");
 assert.ok(!pkg.scripts.test.includes("opencode"), "npm test must not reference OpenCode suites");
-console.log("PASS package.json declares the Pi package (files, keywords, optional peers)");
+// Explicit pi manifest so both `pi install` (manifest mode) and `-e <dir>`
+// (resolveExtensionEntries) find every resource. All three types are listed:
+// a manifest with only extensions would drop prompts/skills from collection.
+assert.ok(pkg.pi && typeof pkg.pi === "object", "package.json must declare an explicit pi manifest");
+assert.deepEqual(pkg.pi.extensions, ["extensions/humanizer.ts"], "pi.extensions must point at the extension file");
+assert.deepEqual(pkg.pi.prompts, ["prompts/audit.md"], "pi.prompts must point at the audit template");
+assert.deepEqual(pkg.pi.skills, ["skills/humanizer"], "pi.skills must point at the skill dir");
+for (const entry of [...pkg.pi.extensions, ...pkg.pi.prompts, ...pkg.pi.skills]) {
+  assert.ok(fs.existsSync(path.join(root, entry)), `pi manifest entry must exist: ${entry}`);
+}
+console.log("PASS package.json declares the Pi package (files, keywords, optional peers, pi manifest)");
 
 // --- 4. Skill frontmatter is Pi-valid (Agent Skills) ---
 const skill = fs.readFileSync(path.join(root, "skills", "humanizer", "SKILL.md"), "utf8").replace(/^\uFEFF/, "");
