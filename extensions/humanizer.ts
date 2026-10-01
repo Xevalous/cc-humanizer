@@ -8,15 +8,20 @@
 //
 // Mapping from the Claude hooks (hooks/hooks.json):
 //   SessionStart            -> "before_agent_start" (append guidelines to the
-//                              system prompt every turn)
+//                              system prompt once per agent run; Pi fires
+//                              this before the agent loop, the prompt persists
+//                              for the run)
 //   PreToolUse Write/Edit   -> "tool_call" on Pi's write/edit tools (block
 //                              prose writes with violations, mirroring the
 //                              Claude "deny" + permissionDecisionReason flow)
 //   PostToolUse             -> "tool_result" on write/edit (backstop: warn
 //                              only, the write already happened)
-//   Stop (response audit)   -> "message_end" on assistant messages (warn only,
-//                              mirroring the Claude Stop hook which warns via
-//                              systemMessage instead of hard blocking)
+//   Stop (response audit)   -> "message_end" on assistant messages (user-
+//                              visible warning only via ui.notify/console.
+//                              Unlike Claude's Stop hook which warns via
+//                              systemMessage (model-visible), Pi's
+//                              message_end cannot steer the model, so this
+//                              does not trigger a rewrite.)
 //
 // Manual audit: the /audit prompt template (prompts/audit.md) calls the
 // humanizer_audit tool below, so the agent can scan without knowing this
@@ -25,14 +30,17 @@
 //
 // Options (env only; Pi has no per-package options object):
 //   HUMANIZER_DISABLE=1  turn every hook and the audit tool off.
+//                        Checked on every event (no restart needed); when set
+//                        before load the tool is not even registered.
 //   HUMANIZER_STRICT=0   warn instead of blocking prose writes.
+//                        Read per tool_call (no restart needed).
 //
 // Install as a Pi package (no npm publish needed):
 //   pi install git:github.com/Xevalous/cc-humanizer
 // or a local checkout:
 //   pi install ./path/to/cc-humanizer
-// Try for one invocation:
-//   pi -e ./path/to/cc-humanizer
+// Try a single file without installing (package dir alone discovers nothing):
+//   pi -e ./path/to/cc-humanizer/extensions/humanizer.ts
 // During development, load this file directly:
 //   pi --extension ./extensions/humanizer.ts
 // (lib/rules.cjs resolves relative to this file, so keep the file inside
@@ -121,9 +129,16 @@ You MUST follow these rules based on blader/humanizer (Wikipedia: Signs of AI wr
 
 Automatic hooks are active: write/edit calls touching prose files (.md, .mdx, .markdown, .txt, .adoc, .rst, .html) are blocked when they violate these rules. Use /audit for a manual file audit (powered by the humanizer_audit tool when available) and the humanizer skill for full rewrites.`;
 
+function isStrict(): boolean {
+  return process.env.HUMANIZER_STRICT !== "0";
+}
+
+function isDisabled(): boolean {
+  return process.env.HUMANIZER_DISABLE === "1";
+}
+
 // Pi's file-writing tools (Claude's Write/Edit/MultiEdit/NotebookEdit equivalent;
 // Pi splits precise edits and full writes into edit and write).
-const WRITE_TOOLS = new Set(["write", "edit"]);
 
 function readFileSafe(filePath: string): string | null {
   try {
@@ -172,10 +187,14 @@ function scanBeforeWrite(pending: PendingWrite, cwd: string): string | null {
   const { filePath, newContent, oldStrings, isFullFile } = pending;
   if (hasSkipMarker(newContent)) return null;
 
+  // File-level exemption: a skip marker already on disk exempts the path,
+  // even when the incoming newText does not repeat the marker.
+  const onDisk = readFileSafe(path.resolve(cwd, filePath));
+  if (onDisk !== null && hasSkipMarker(onDisk)) return null;
+
   // Edits fully inside fenced code blocks are never blocked.
-  if (oldStrings.length > 0) {
-    const onDisk = readFileSafe(path.resolve(cwd, filePath));
-    if (onDisk !== null && oldStrings.every((s) => s && allOccurrencesInsideFences(onDisk, s))) {
+  if (oldStrings.length > 0 && onDisk !== null) {
+    if (oldStrings.every((s) => s && allOccurrencesInsideFences(onDisk, s))) {
       return null;
     }
   }
@@ -279,6 +298,9 @@ const auditTool = defineTool({
   }),
   annotations: { readOnlyHint: true, idempotentHint: true },
   async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
+    if (isDisabled()) {
+      throw new Error("Humanizer is disabled (HUMANIZER_DISABLE=1).");
+    }
     const targetPath = typeof params.path === "string" ? params.path.trim() : "";
     const inlineText = typeof params.text === "string" ? params.text : "";
     if (!targetPath && !inlineText) {
@@ -313,32 +335,35 @@ const auditTool = defineTool({
           : formatAuditReport(hard.concat(density), label);
     const base = { file: label, hard: hard.map(toJsonViolation), density: density.map(toJsonViolation) };
     const structured = skipped === undefined ? base : { ...base, skipped };
+    const details: Record<string, unknown> = { file: label, hard, density };
+    if (skipped !== undefined) details["skipped"] = skipped;
     return {
       content: [{ type: "text", text }],
-      details: { file: label, skipped, hard, density },
+      details,
       structuredContent: structured,
     };
   },
 });
 
 export default function (pi: ExtensionAPI) {
-  if (process.env.HUMANIZER_DISABLE === "1") return;
-  const strict = process.env.HUMANIZER_STRICT !== "0";
+  if (isDisabled()) return;
 
-  // SessionStart equivalent: inject the guidelines into every model request.
+  // SessionStart equivalent: inject the guidelines once per agent run.
+  // (Pi fires before_agent_start before the agent loop; the prompt persists.)
   pi.on("before_agent_start", async (event) => {
+    if (isDisabled()) return undefined;
     return { systemPrompt: event.systemPrompt + "\n\n" + SYSTEM_PROMPT };
   });
 
   // PreToolUse equivalent: hard-block prose writes with violations.
   pi.on("tool_call", async (event, ctx) => {
+    if (isDisabled()) return undefined;
     if (!isToolCallEventType("write", event) && !isToolCallEventType("edit", event)) return undefined;
-    if (!WRITE_TOOLS.has(event.toolName)) return undefined;
     const pending = extractPendingWrite(event.toolName, event.input);
     if (!pending) return undefined;
     const reason = scanBeforeWrite(pending, ctx.cwd);
     if (!reason) return undefined;
-    if (!strict) {
+    if (!isStrict()) {
       console.error("[humanizer] warning (non-strict mode, write allowed):\n" + reason);
       if (ctx.hasUI) ctx.ui.notify("Humanizer found AI tells (non-strict mode: write allowed).", "warning");
       return undefined;
@@ -349,6 +374,7 @@ export default function (pi: ExtensionAPI) {
 
   // PostToolUse equivalent: backstop scan, warn only (the write happened).
   pi.on("tool_result", async (event, ctx) => {
+    if (isDisabled()) return undefined;
     if (event.toolName !== "write" && event.toolName !== "edit") return undefined;
     if (event.isError) return undefined;
     const input = (event.input !== null && typeof event.input === "object" ? event.input : {}) as Record<string, unknown>;
@@ -364,10 +390,12 @@ export default function (pi: ExtensionAPI) {
     return undefined;
   });
 
-  // Stop equivalent: audit the assistant message for chatbot residue. Warn
-  // only (mirrors the Claude Stop hook, which warns via systemMessage to
-  // avoid infinite loops).
+  // Stop equivalent: audit the assistant message for chatbot residue.
+  // User-visible warning only (ui.notify/console). Unlike Claude's Stop hook
+  // (systemMessage, model-visible), this cannot steer the model or trigger
+  // a rewrite; it only notifies the user to avoid infinite loops.
   pi.on("message_end", async (event, ctx) => {
+    if (isDisabled()) return undefined;
     const text = assistantTextOf(event.message);
     if (!text) return undefined;
     const violations = auditAssistantResponse(text);

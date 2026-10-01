@@ -64,10 +64,10 @@ Or point at a local checkout:
 pi install ./path/to/cc-humanizer
 ```
 
-Try it once without installing:
+Try it once without installing (point at the file, not the package dir):
 
 ```
-pi -e ./path/to/cc-humanizer
+pi -e ./path/to/cc-humanizer/extensions/humanizer.ts
 ```
 
 During development, load the extension file directly (`lib/rules.cjs` resolves relative to it, so keep the file inside the checkout):
@@ -80,14 +80,14 @@ What the Pi side wires up (`extensions/humanizer.ts`):
 
 | Claude hook | Pi equivalent |
 |---|---|
-| `SessionStart` injects guidelines | `before_agent_start` appends the same guidelines to the system prompt every turn |
+| `SessionStart` injects guidelines | `before_agent_start` replaces the system prompt once per agent run (persists for the run) |
 | `PreToolUse` blocks prose writes | `tool_call` on Pi's `write`/`edit` tools; returns `{ block: true, reason }` so the agent rewrites (mirrors the deny flow) |
 | `PostToolUse` backstop | `tool_result` on `write`/`edit` that warns on violations (the write already happened) |
-| `Stop` response audit | `message_end` on assistant messages that warns on chatbot residue (warn-only, like the Claude Stop hook) |
+| `Stop` response audit | `message_end` on assistant messages: user-visible warning only (`ui.notify`/stderr). Unlike Claude's `Stop` hook (`systemMessage`, model-visible), it cannot steer the model or trigger a rewrite |
 | `/audit` command | Prompt template `prompts/audit.md`, which prefers the engine-powered `humanizer_audit` tool the extension registers (falls back to a self-contained manual scan when the extension is not loaded) |
 | `humanizer` skill | `skills/humanizer/SKILL.md` is discovered by Pi natively (Agent Skills spec) |
 
-Options: `HUMANIZER_STRICT=0` warns instead of blocking; `HUMANIZER_DISABLE=1` turns every hook and the audit tool off.
+Options: `HUMANIZER_STRICT=0` warns instead of blocking (read per write, no restart needed); `HUMANIZER_DISABLE=1` turns every hook and the audit tool off (checked per event; when set before load the tool is not registered).
 
 No keep-in-sync step is needed for the rules: the Pi extension loads `lib/rules.cjs` (the same file the Claude hooks use) directly in-process.
 
