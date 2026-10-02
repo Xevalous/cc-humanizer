@@ -6,14 +6,14 @@
   },
   "metadata": {
     "description": "Anti-AI writing enforcement & automated audit marketplace for Claude Code",
-    "version": "1.2.0"
+    "version": "1.3.0"
   },
   "plugins": [
     {
       "name": "humanizer",
       "source": "./",
       "description": "Automatically audits and enforces human writing rules from blader/humanizer. Hard-blocks em dashes, curly quotes, chatbot residue, and inflated claims on file writes and reviews agent output.",
-      "version": "1.2.0",
+      "version": "1.3.0",
       "author": {
         "name": "Xevalous"
       },

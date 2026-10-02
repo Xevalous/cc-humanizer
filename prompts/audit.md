@@ -16,6 +16,6 @@ Run a comprehensive humanizer audit on `$ARGUMENTS`.
 Hard rules (zero tolerance):
 - NO em dashes (--) or en dashes (-); use commas, periods, colons, or parentheses. NO double hyphens (--) used as dashes. Straight quotes ("...") and straight apostrophes (') only, no curly quotes.
 - NO chatbot residue: "Certainly!", "Great question!", "Of course!", "I hope this helps!", "Let me know if you need anything else!", "Here is an overview/breakdown". Start with the substance, end cleanly.
-- NO "not X but Y" formulas, one-line dramatic closers ("That is the real win."), pseudo-profound sayings ("at its core"), staged run-ups ("Let's dive in"), or arguing with no one ("This isn't about...").
-- NO inflated significance ("stands as a testament", "plays a pivotal role") or stock AI buzzwords (delve, tapestry, pivotal, crucial, foster, showcase, harness, robust, seamless, streamline, unlock, vibrant, landscape, realm, leverage, navigate).
+- NO "not X but Y" formulas, one-line dramatic closers ("That is the real win.", "That distinction matters."), sentences that explain an example just shown ("This shows the importance of..."), pseudo-profound sayings ("at its core"), staged run-ups ("Let's dive in"), or arguing with no one ("This isn't about...").
+- NO inflated significance ("stands as a testament", "plays a pivotal role") or stock AI buzzwords (§12: additionally, crucial, delve, enhance, garner, highlight, interplay, intricate, landscape, pivotal, robust, showcase, tapestry, testament).
 - NO shallow -ing riders ("underscoring", "highlighting"), decorative emojis in headings, or bold labels on every list item.

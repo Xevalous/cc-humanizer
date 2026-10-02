@@ -107,7 +107,7 @@ const CHATBOT = "Great question! Here is the plan. I hope this helps!";
 const CLEAN = "Caching cuts repeat work. Retries hide brief outages.";
 const SKIP = "Draft body. <!-- humanizer:skip --> Exempt.";
 const DENSITY_SENTENCE =
-  "The landscape of the realm rewards teams that leverage simple tools.";
+  "The landscape holds a tapestry that the showcase made crucial.";
 
 // --- 1. Factory wiring ------------------------------------------------------
 {

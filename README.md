@@ -95,7 +95,7 @@ No keep-in-sync step is needed for the rules: the Pi extension loads `lib/rules.
 
 - **Automatic:** hooks run on their own. If a write is blocked, the hook returns a structured deny decision listing the violations and how to fix each one; the model rewrites and tries again.
 - **`/audit <file path>`:** run a manual audit on any prose file. It reports violations grouped by hard rules and the density watchlist, then fixes them following the humanizer guidelines.
-- **Skill (`humanizer`):** invoke it on any text to rewrite AI-sounding prose into natural writing without changing what it says. It covers 25 numbered patterns, strongest first, and matches the writer's voice when a writing sample is given.
+- **Skill (`humanizer`):** invoke it on any text to rewrite AI-sounding prose into natural writing without changing what it says. It covers 26 numbered patterns (v3.1.0, strongest first), and matches the writer's voice when a writing sample is given.
 
 ## Repository layout
 

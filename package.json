@@ -1,6 +1,6 @@
 {
   "name": "humanizer",
-  "version": "1.2.0",
+  "version": "1.3.0",
   "description": "Human writing enforcement (blader/humanizer, Wikipedia Signs of AI writing) for Claude Code and Pi from one codebase: hooks/write-blocking, /audit, and a rewriting skill.",
   "type": "module",
   "license": "MIT",

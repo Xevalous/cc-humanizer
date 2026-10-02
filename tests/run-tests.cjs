@@ -64,10 +64,10 @@ const t11 = rules.findHardViolations(t11Text);
 assert(t11.some(v => v.rule === 'decorative-bold-list'), 'Expected decorative bold list violation');
 console.log('✓ Decorative bold list detection passed');
 
-// Test 12: Density watchlist
+// Test 12: Density watchlist (§12 words)
 const t12Text = `
 # Overview
-We delve into the intricate landscape to foster synergy and elevate robust performance.
+We delve into the intricate landscape and showcase its crucial tapestry.
 `;
 const t12 = rules.findDensityViolations(t12Text);
 assert(t12.some(v => v.rule === 'watchlist-density'), 'Expected watchlist density violation');

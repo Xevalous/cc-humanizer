@@ -2,7 +2,7 @@
 'use strict';
 // humanizer SessionStart hook.
 // Injects a compact, authoritative summary of the humanizer writing rules
-// (blader/humanizer v3.0.0) into the agent's context on startup, resume, or clear.
+// (blader/humanizer v3.1.0) into the agent's context on startup, resume, or clear.
 // This ensures the AI agent follows these rules from the start without needing
 // manual skill or slash command invocation.
 
@@ -24,7 +24,8 @@ You MUST follow these rules based on blader/humanizer (Wikipedia: Signs of AI wr
 3. No Staging:
    - State the point directly.
    - NO "not X but Y" formulas ("It's not just about speed, it's about control").
-   - NO one-line dramatic closers: "That is the real win.", "Read that again.", "Let that sink in."
+   - NO one-line dramatic closers: "That is the real win.", "That distinction matters.", "Read that again.", "Let that sink in."
+   - NO sentence that explains an example the reader just saw ("This shows the importance of...", "The message was clear:", "It was a lesson in patience.").
    - NO pseudo-profound sayings: "at its core", "what really matters", "the real question is", "the heart of the matter".
    - NO staged run-ups: "Let's dive in", "Here's what you need to know", "Without further ado", "Here's the thing", "Let's be honest".
    - NO arguing with no one: "This isn't about...", "I'm not saying...", "Don't get me wrong...", "One might be tempted to...".
@@ -32,7 +33,7 @@ You MUST follow these rules based on blader/humanizer (Wikipedia: Signs of AI wr
 4. No Inflation or Buzzwords:
    - State what happened without corporate cheerleading.
    - NO inflated significance: "stands as a testament", "plays a pivotal/crucial role", "marking a pivotal moment", "indelible mark", "evolving landscape", "the future looks bright", "game-changer".
-   - Cut stock AI buzzwords: delve, tapestry, testament, intricate, pivotal, crucial, vital, foster, cultivate, garner, showcase, enhance, elevate, empower, harness, holistic, robust, seamless, effortlessly, streamline, supercharge, unlock, boast, vibrant, landscape, realm, interplay, enduring, leverage, navigate.
+   - Cut stock AI buzzwords (§12): additionally, crucial, delve, enhance, garner, highlight (verb), interplay, intricate, landscape, pivotal, robust, showcase, tapestry, testament.
    - NO shallow -ing riders bolted onto facts: "underscoring", "highlighting", "emphasizing", "reflecting", "symbolizing".
    - Use simple verbs: is, are, has (avoid "serves as", "functions as").
 
