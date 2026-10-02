@@ -2,13 +2,12 @@
 //
 // Complements run-pi-tests.mjs (static wiring checks) by actually loading
 // the extension and driving its handlers:
-//   1. Factory wiring (handlers + tool registration, DISABLE=1 registers nothing)
+//   1. Factory wiring (handlers only, no audit tool, DISABLE=1 registers nothing)
 //   2. before_agent_start injects guidelines
 //   3. tool_call blocking (write/edit, skip markers, fence guard, density scope, STRICT)
 //   4. tool_result backstop (warn-only)
 //   5. message_end audit (warn-only, assistant text only)
-//   6. humanizer_audit tool (inline/file/skip/non-prose/errors/DISABLE)
-//   7. context injection (staged notice delivered once, model-visible)
+//   6. context injection (staged notice delivered once, model-visible)
 //
 // Run: node tests/run-pi-functional.mjs (wired into `npm test`).
 import assert from "node:assert/strict";
@@ -31,7 +30,7 @@ assert.equal(typeof factory, "function", "extension must default-export a factor
 // --- Mock Pi ---------------------------------------------------------------
 function createMockPi() {
   const handlers = new Map();
-  const tools = new Map();
+  const tools = [];
   const pi = {
     on(event, handler) {
       if (!handlers.has(event)) handlers.set(event, []);
@@ -39,7 +38,7 @@ function createMockPi() {
       return () => {};
     },
     registerTool(tool) {
-      tools.set(tool.name, tool);
+      tools.push(tool);
     },
   };
   return { pi, handlers, tools };
@@ -117,7 +116,7 @@ const DENSITY_SENTENCE =
     for (const event of ["before_agent_start", "tool_call", "tool_result", "message_end", "context"]) {
       assert.ok((handlers.get(event) ?? []).length === 1, `${event} handler registered`);
     }
-    assert.ok(tools.has("humanizer_audit"), "humanizer_audit tool registered");
+    assert.equal(tools.length, 0, "no audit tool registered (manual review lives in the skill)");
   });
 
   withEnv({ HUMANIZER_DISABLE: "1" }, () => {
@@ -134,7 +133,7 @@ const DENSITY_SENTENCE =
     factory(pi);
     assert.deepEqual(seen, [], "DISABLE=1 registers nothing");
   });
-  console.log("PASS factory wiring (handlers + tool, DISABLE=1 inert)");
+  console.log("PASS factory wiring (handlers only, no tool, DISABLE=1 inert)");
 }
 
 // --- 2. before_agent_start ---------------------------------------------------
@@ -487,92 +486,7 @@ const DENSITY_SENTENCE =
   console.log("PASS message_end audits assistant text (user-visible warning only)");
 }
 
-// --- 6. humanizer_audit tool -------------------------------------------------
-{
-  const { pi, tools } = createMockPi();
-  withEnv({ HUMANIZER_DISABLE: undefined }, () => factory(pi));
-  const tool = tools.get("humanizer_audit");
-  assert.ok(tool, "tool registered");
-  assert.equal(tool.annotations?.readOnlyHint, true, "read-only hint set");
-
-  const cwd = makeTmp();
-  try {
-    const toolCtx = (extra = {}) => ({ cwd, ...extra });
-
-    // 6a. requires path or text.
-    await assert.rejects(() => tool.execute("t1", {}, undefined, undefined, toolCtx()), /Provide "path"/);
-
-    // 6b. inline text with violations.
-    {
-      const out = await withEnv({ HUMANIZER_DISABLE: undefined }, () =>
-        tool.execute("t2", { text: `${EM_DASH}\n${CHATBOT}` }, undefined, undefined, toolCtx()),
-      );
-      assert.ok(out.content[0].text.includes("violation(s) found"), "reports violations");
-      assert.ok(out.structuredContent.hard.length > 0, "structured hard hits");
-      assert.ok(!("skipped" in out.structuredContent), "no skipped key when scanned");
-      assert.ok(!("skipped" in out.details), "details omits skipped when scanned");
-    }
-
-    // 6c. inline clean text.
-    {
-      const out = await withEnv({ HUMANIZER_DISABLE: undefined }, () =>
-        tool.execute("t3", { text: CLEAN }, undefined, undefined, toolCtx()),
-      );
-      assert.ok(out.content[0].text.includes("clean"), "clean inline text reported");
-      assert.deepEqual(out.structuredContent.hard, []);
-      assert.deepEqual(out.structuredContent.density, []);
-    }
-
-    // 6d. file with violations.
-    fs.writeFileSync(path.join(cwd, "audit.md"), EM_DASH, "utf8");
-    {
-      const out = await withEnv({ HUMANIZER_DISABLE: undefined }, () =>
-        tool.execute("t4", { path: "audit.md" }, undefined, undefined, toolCtx()),
-      );
-      assert.ok(out.structuredContent.hard.length > 0, "file violations reported");
-      assert.ok(out.structuredContent.file.endsWith("audit.md"), "file label is absolute path");
-    }
-
-    // 6e. non-prose file skipped.
-    fs.writeFileSync(path.join(cwd, "code.ts"), EM_DASH, "utf8");
-    {
-      const out = await withEnv({ HUMANIZER_DISABLE: undefined }, () =>
-        tool.execute("t5", { path: "code.ts" }, undefined, undefined, toolCtx()),
-      );
-      assert.equal(out.structuredContent.skipped, "not a prose file", "non-prose skipped");
-      assert.equal(out.details.skipped, "not a prose file", "details carries skipped");
-      assert.ok(out.content[0].text.includes("skipped"), "text reports skipped");
-    }
-
-    // 6f. skip marker skipped.
-    fs.writeFileSync(path.join(cwd, "skipped.md"), `${EM_DASH}\n${SKIP}`, "utf8");
-    {
-      const out = await withEnv({ HUMANIZER_DISABLE: undefined }, () =>
-        tool.execute("t6", { path: "skipped.md" }, undefined, undefined, toolCtx()),
-      );
-      assert.equal(out.structuredContent.skipped, "skip marker present", "skip marker honored");
-    }
-
-    // 6g. missing file throws.
-    await assert.rejects(
-      () =>
-        withEnv({ HUMANIZER_DISABLE: undefined }, () =>
-          tool.execute("t7", { path: "missing.md" }, undefined, undefined, toolCtx()),
-        ),
-      /Cannot read file/,
-    );
-
-    // 6h. DISABLE=1 throws (tool stays registered but inert).
-    await withEnv({ HUMANIZER_DISABLE: "1" }, () =>
-      assert.rejects(() => tool.execute("t8", { text: CLEAN }, undefined, undefined, toolCtx()), /disabled/),
-    );
-  } finally {
-    fs.rmSync(cwd, { recursive: true, force: true });
-  }
-  console.log("PASS humanizer_audit scans inline/file text (skip/non-prose/errors covered)");
-}
-
-// --- 7. context injection (model-visible half of the Stop equivalent) --------
+// --- 6. context injection (model-visible half of the Stop equivalent) --------
 // Fresh module instance so pendingResponseNotice starts empty (earlier groups
 // stage notices in the shared instance via message_end).
 {
@@ -588,7 +502,7 @@ const DENSITY_SENTENCE =
   const contextEvent = () => ({ type: "context", messages: baseMessages.slice() });
   const { ctx } = mockCtx(process.cwd());
 
-  // 7a. nothing staged -> no-op undefined, input untouched (cached prefix kept).
+  // 6a. nothing staged -> no-op undefined, input untouched (cached prefix kept).
   {
     const evt = contextEvent();
     const out = await withEnv({ HUMANIZER_DISABLE: undefined }, () =>
@@ -598,7 +512,7 @@ const DENSITY_SENTENCE =
     assert.deepEqual(evt.messages, baseMessages, "input messages untouched");
   }
 
-  // 7b. violation stages a notice; context delivers it once as a system message.
+  // 6b. violation stages a notice; context delivers it once as a system message.
   let toasted;
   {
     const { ctx: mctx, notifications } = mockCtx(process.cwd());
@@ -628,7 +542,7 @@ const DENSITY_SENTENCE =
     assert.deepEqual(evt.messages, baseMessages, "handler does not mutate the input list");
   }
 
-  // 7c. consumed once: second call is a no-op again.
+  // 6c. consumed once: second call is a no-op again.
   {
     const out = await withEnv({ HUMANIZER_DISABLE: undefined }, () =>
       callOnlyHandler(handlers, "context", contextEvent(), ctx),
@@ -636,7 +550,7 @@ const DENSITY_SENTENCE =
     assert.equal(out, undefined, "staged notice consumed exactly once");
   }
 
-  // 7d. clean response stages nothing.
+  // 6d. clean response stages nothing.
   {
     const { ctx: mctx, notifications } = mockCtx(process.cwd());
     await withEnv({ HUMANIZER_DISABLE: undefined }, () =>
@@ -654,7 +568,7 @@ const DENSITY_SENTENCE =
     assert.equal(out, undefined, "clean response stages no notice");
   }
 
-  // 7e. DISABLE suppresses both staging and delivery.
+  // 6e. DISABLE suppresses both staging and delivery.
   {
     const { ctx: mctx } = mockCtx(process.cwd());
     await withEnv({ HUMANIZER_DISABLE: "1" }, () =>

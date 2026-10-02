@@ -1,10 +1,9 @@
 // Tests for the Pi compatibility layer.
-// 1. Static checks: extensions/humanizer.ts wires the expected Pi hooks + tool
+// 1. Static checks: extensions/humanizer.ts wires the expected Pi hooks
 //    and loads the engine from lib/rules.cjs (no other platform's components).
-// 2. Presence: prompts/audit.md prompt template exists and is self-contained.
-// 3. Manifest: package.json declares the Pi package resources correctly.
-// 4. Skill: skills/humanizer/SKILL.md carries Pi-valid (Agent Skills) frontmatter.
-// 5. Functional smoke: the engine entry points the Pi extension depends on behave.
+// 2. Manifest: package.json declares the Pi package resources correctly.
+// 3. Skill: skills/humanizer/SKILL.md carries Pi-valid (Agent Skills) frontmatter.
+// 4. Functional smoke: the engine entry points the Pi extension depends on behave.
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import { createRequire } from "node:module";
@@ -29,9 +28,6 @@ for (const needle of [
   '"message_end"',
   '"context"',
   "pendingResponseNotice",
-  "registerTool",
-  "humanizer_audit",
-  "defineTool",
   "isToolCallEventType",
   "createRequire",
   "../lib/rules.cjs",
@@ -46,9 +42,6 @@ for (const needle of [
   "allOccurrencesInsideFences",
   "hasSkipMarker",
   "@earendil-works/pi-coding-agent",
-  "@earendil-works/pi-ai",
-  "outputSchema",
-  "readOnlyHint",
   "block: true",
   "SYSTEM_PROMPT",
 ]) {
@@ -64,6 +57,14 @@ for (const banned of [
   "ctx.tool.hook",
   "ctx.command.transform",
   "ctx.skill.transform",
+  "humanizer_audit",
+  "defineTool",
+  "registerTool",
+  "prompts/audit",
+  "/audit",
+  "@earendil-works/pi-ai",
+  "outputSchema",
+  "readOnlyHint",
 ]) {
   assert.ok(!ext.includes(banned), `extensions/humanizer.ts must not contain ${banned}`);
 }
@@ -72,29 +73,14 @@ for (const ch of ["\u2014", "\u2013", "\u201c", "\u201d", "\u2019"]) {
   assert.ok(!ext.includes(ch), "extensions/humanizer.ts must not contain fancy punctuation U+" + ch.codePointAt(0).toString(16));
 }
 assert.ok(ext.includes("export default function"), "extension must default-export a factory");
-console.log("PASS extensions/humanizer.ts wires Pi hooks (prompt inject, block, backstop, audit, context) + tool");
+console.log("PASS extensions/humanizer.ts wires Pi hooks (prompt inject, block, backstop, response notice, context)");
 
-// --- 2. prompts/audit.md presence + content ---
-const promptPath = path.join(root, "prompts", "audit.md");
-assert.ok(fs.existsSync(promptPath), "prompts/audit.md must exist");
-const prompt = fs.readFileSync(promptPath, "utf8");
-assert.ok(prompt.startsWith("---"), "prompt template needs frontmatter");
-assert.ok(prompt.includes("description:"), "prompt template needs a description");
-assert.ok(prompt.includes("argument-hint:"), "prompt template needs an argument-hint");
-assert.ok(prompt.includes("$ARGUMENTS"), "prompt template uses $ARGUMENTS");
-assert.ok(prompt.includes("humanizer_audit"), "prompt prefers the humanizer_audit tool");
-assert.ok(prompt.includes("humanizer") && prompt.includes("skill"), "prompt points at the humanizer skill");
-assert.ok(!prompt.includes("CLAUDE_PLUGIN_ROOT"), "prompt must not reference Claude env");
-assert.ok(!prompt.includes("audit-cli.mjs"), "prompt must not depend on install-dir CLI paths");
-assert.ok(!prompt.includes(".opencode"), "prompt must not reference OpenCode paths");
-console.log("PASS prompts/audit.md is a self-contained /audit template using humanizer_audit");
-
-// --- 3. package.json Pi manifest ---
+// --- 2. package.json Pi manifest ---
 const pkg = JSON.parse(fs.readFileSync(path.join(root, "package.json"), "utf8"));
-for (const dir of ["lib", "skills", "extensions", "prompts"]) {
+for (const dir of ["lib", "skills", "extensions"]) {
   assert.ok(Array.isArray(pkg.files) && pkg.files.includes(dir), `package.json files must include ${dir}`);
 }
-for (const dir of ["src", ".opencode"]) {
+for (const dir of ["src", ".opencode", "prompts"]) {
   assert.ok(!(Array.isArray(pkg.files) && pkg.files.includes(dir)), `package.json files must not include ${dir}`);
 }
 assert.ok(pkg.exports === undefined, "package.json must not carry the OpenCode exports entry");
@@ -102,26 +88,27 @@ assert.ok(!(pkg.dependencies && "@opencode/plugin" in pkg.dependencies), "must n
 assert.ok(Array.isArray(pkg.keywords) && pkg.keywords.includes("pi-package"), "keywords must include pi-package");
 assert.ok(!pkg.keywords.includes("opencode"), "keywords must not mention opencode");
 assert.ok(pkg.peerDependencies?.["@earendil-works/pi-coding-agent"] === "*", "peerDependencies must declare pi-coding-agent *");
-assert.ok(pkg.peerDependencies?.["@earendil-works/pi-ai"] === "*", "peerDependencies must declare pi-ai *");
+assert.ok(!pkg.peerDependencies?.["@earendil-works/pi-ai"], "peerDependencies must not declare pi-ai");
 assert.ok(pkg.peerDependenciesMeta?.["@earendil-works/pi-coding-agent"]?.optional === true, "pi-coding-agent peer must be optional");
-assert.ok(pkg.peerDependenciesMeta?.["@earendil-works/pi-ai"]?.optional === true, "pi-ai peer must be optional");
+assert.ok(!pkg.peerDependenciesMeta?.["@earendil-works/pi-ai"], "pi-ai peer must be absent");
 assert.ok(!(pkg.dependencies && ("@earendil-works/pi-coding-agent" in pkg.dependencies || "@earendil-works/pi-ai" in pkg.dependencies || "typebox" in pkg.dependencies)),
   "host-provided Pi packages must not be in dependencies");
 assert.ok(typeof pkg.scripts?.test === "string" && pkg.scripts.test.includes("run-pi-tests.mjs"), "npm test must run the Pi suite");
 assert.ok(!pkg.scripts.test.includes("opencode"), "npm test must not reference OpenCode suites");
 // Explicit pi manifest so both `pi install` (manifest mode) and `-e <dir>`
-// (resolveExtensionEntries) find every resource. All three types are listed:
-// a manifest with only extensions would drop prompts/skills from collection.
+// (resolveExtensionEntries) find every resource. Only extensions and skills
+// are listed: manual review lives in the humanizer skill, there is no
+// separate audit prompt template.
 assert.ok(pkg.pi && typeof pkg.pi === "object", "package.json must declare an explicit pi manifest");
 assert.deepEqual(pkg.pi.extensions, ["extensions/humanizer.ts"], "pi.extensions must point at the extension file");
-assert.deepEqual(pkg.pi.prompts, ["prompts/audit.md"], "pi.prompts must point at the audit template");
 assert.deepEqual(pkg.pi.skills, ["skills/humanizer"], "pi.skills must point at the skill dir");
-for (const entry of [...pkg.pi.extensions, ...pkg.pi.prompts, ...pkg.pi.skills]) {
+assert.ok(!pkg.pi.prompts, "pi.prompts must be absent (no audit template)");
+for (const entry of [...pkg.pi.extensions, ...pkg.pi.skills]) {
   assert.ok(fs.existsSync(path.join(root, entry)), `pi manifest entry must exist: ${entry}`);
 }
 console.log("PASS package.json declares the Pi package (files, keywords, optional peers, pi manifest)");
 
-// --- 4. Skill frontmatter is Pi-valid (Agent Skills) ---
+// --- 3. Skill frontmatter is Pi-valid (Agent Skills) ---
 const skill = fs.readFileSync(path.join(root, "skills", "humanizer", "SKILL.md"), "utf8").replace(/^\uFEFF/, "");
 const fm = skill.match(/^---\r?\n([\s\S]*?)\r?\n---/);
 assert.ok(fm, "SKILL.md needs frontmatter");
@@ -134,7 +121,7 @@ const descLen = descMatch[1].replace(/^[ \t]+/gm, "").replace(/\n/g, " ").trim()
 assert.ok(descLen > 0 && descLen <= 1024, `skill description must be 1-1024 chars (got ${descLen})`);
 console.log("PASS skills/humanizer/SKILL.md carries Pi-valid Agent Skills frontmatter");
 
-// --- 5. Functional smoke of the engine surface the Pi extension uses ---
+// --- 4. Functional smoke of the engine surface the Pi extension uses ---
 assert.equal(rules.isProsePath("notes.md"), true);
 assert.equal(rules.isProsePath("main.ts"), false);
 assert.equal(rules.hasSkipMarker("x <!-- humanizer:skip --> y"), true);
@@ -152,6 +139,7 @@ assert.equal(rules.allOccurrencesInsideFences(onDisk, "Intro line."), false);
 const residue = rules.auditAssistantResponse("Great question! Here is the plan. I hope this helps!");
 assert.ok(residue.length > 0, "response audit flags chatbot residue");
 assert.deepEqual(rules.auditAssistantResponse("Caching cuts repeat work. Retries hide brief outages."), []);
+
 console.log("PASS engine smoke: write/edit/response paths the Pi extension relies on");
 
 console.log("All Pi compatibility tests passed.");

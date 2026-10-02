@@ -23,15 +23,12 @@
 //                              systemMessage; consumed once, forces no
 //                              extra turn, cannot loop)
 //
-// Manual audit: the /audit prompt template (prompts/audit.md) calls the
-// humanizer_audit tool below, so the agent can scan without knowing this
-// package's install directory layout. The humanizer skill (skills/humanizer)
-// is discovered automatically from the package skills/ directory.
+// The humanizer skill (skills/humanizer) handles manual review and rewrites.
+// It is discovered automatically from the package skills/ directory.
 //
 // Options (env only; Pi has no per-package options object):
-//   HUMANIZER_DISABLE=1  turn every hook and the audit tool off.
-//                        Checked on every event (no restart needed); when set
-//                        before load the tool is not even registered.
+//   HUMANIZER_DISABLE=1  turn every hook off.
+//                        Checked on every event (no restart needed).
 //   HUMANIZER_STRICT=0   warn instead of blocking prose writes.
 //                        Read per tool_call (no restart needed).
 //
@@ -46,8 +43,7 @@
 // (lib/rules.cjs resolves relative to this file, so keep the file inside
 // the repo checkout.)
 
-import { defineTool, isToolCallEventType, type ExtensionAPI } from "@earendil-works/pi-coding-agent";
-import { Type } from "@earendil-works/pi-ai";
+import { isToolCallEventType, type ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import fs from "node:fs";
 import { createRequire } from "node:module";
 import path from "node:path";
@@ -128,7 +124,7 @@ You MUST follow these rules based on blader/humanizer (Wikipedia: Signs of AI wr
    - NO bold labels on every list item (- **Label:** description).
    - Do NOT repeat the heading in the first sentence.
 
-Automatic hooks are active: write/edit calls touching prose files (.md, .mdx, .markdown, .txt, .adoc, .rst, .html) are blocked when they violate these rules. Use /audit for a manual file audit (powered by the humanizer_audit tool when available) and the humanizer skill for full rewrites.`;
+Automatic hooks are active: write/edit calls touching prose files (.md, .mdx, .markdown, .txt, .adoc, .rst, .html) are blocked when they violate these rules. Use the humanizer skill for full rewrites.`;
 
 // Pending model-visible reminder, set by message_end and consumed once by
 // the context handler below. Module-level because the two events fire at
@@ -213,41 +209,6 @@ function scanBeforeWrite(pending: PendingWrite, cwd: string): string | null {
   return formatReason(violations, filePath, "write");
 }
 
-function toJsonViolation(v: Violation): Record<string, string | number> {
-  const out: Record<string, string | number> = {
-    tier: v.tier,
-    rule: v.rule,
-    name: v.name,
-    evidence: v.evidence,
-    fix: v.fix,
-  };
-  if (v.line !== undefined) out["line"] = v.line;
-  if (v.section !== undefined) out["section"] = v.section;
-  return out;
-}
-
-function formatAuditReport(violations: Violation[], label: string): string {
-  const hard = violations.filter((v) => v.tier === "hard");
-  const density = violations.filter((v) => v.tier !== "hard");
-  const lines = [`Humanizer audit of ${label}: ${violations.length} violation(s) found.`];
-  if (hard.length > 0) {
-    lines.push("", "Hard violations (must fix):");
-    for (const v of hard) {
-      lines.push(`- ${v.name}${v.line ? ` (line ${v.line})` : ""}: ${v.evidence}`);
-      lines.push(`  Fix: ${v.fix}`);
-    }
-  }
-  if (density.length > 0) {
-    lines.push("", "Watchlist density violations:");
-    for (const v of density) {
-      lines.push(`- Section ${v.section}: ${v.evidence}`);
-      lines.push(`  Fix: ${v.fix}`);
-    }
-  }
-  lines.push("", "Rewrite the flagged passages so they read naturally without AI staging, em dashes, or stock filler. Load the humanizer skill for full rewrites.");
-  return lines.join("\n");
-}
-
 interface AssistantTextBlock {
   type?: string;
   text?: string;
@@ -271,88 +232,6 @@ function assistantTextOf(message: unknown): string | null {
   }
   return null;
 }
-
-const ViolationSchema = Type.Object({
-  tier: Type.String(),
-  rule: Type.String(),
-  name: Type.String(),
-  line: Type.Optional(Type.Number()),
-  section: Type.Optional(Type.Number()),
-  evidence: Type.String(),
-  fix: Type.String(),
-});
-
-const auditTool = defineTool({
-  name: "humanizer_audit",
-  label: "Humanizer audit",
-  description:
-    "Audit a prose file or inline text for AI writing tells under blader/humanizer (Wikipedia Signs of AI writing). Returns hard violations and density watchlist hits with line numbers and fixes. Use before finalizing prose, or when /audit asks for a scan.",
-  promptSnippet: "Audit prose for AI writing tells (em dashes, chatbot residue, staging, buzzwords)",
-  promptGuidelines: ["Use humanizer_audit to check prose files or pasted text for AI tells before finalizing them."],
-  parameters: Type.Object({
-    path: Type.Optional(
-      Type.String({
-        description: "Prose file to audit, absolute or relative to the working directory. Either path or text is required.",
-      }),
-    ),
-    text: Type.Optional(
-      Type.String({ description: "Inline prose text to audit. Either path or text is required." }),
-    ),
-  }),
-  outputSchema: Type.Object({
-    file: Type.String(),
-    skipped: Type.Optional(Type.String()),
-    hard: Type.Array(ViolationSchema),
-    density: Type.Array(ViolationSchema),
-  }),
-  annotations: { readOnlyHint: true, idempotentHint: true },
-  async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
-    if (isDisabled()) {
-      throw new Error("Humanizer is disabled (HUMANIZER_DISABLE=1).");
-    }
-    const targetPath = typeof params.path === "string" ? params.path.trim() : "";
-    const inlineText = typeof params.text === "string" ? params.text : "";
-    if (!targetPath && !inlineText) {
-      throw new Error('Provide "path" (a prose file) or "text" (inline prose) to audit.');
-    }
-
-    let label = "inline text";
-    let content = inlineText;
-    let skipped: string | undefined;
-
-    if (!inlineText) {
-      const abs = path.resolve(ctx.cwd, targetPath);
-      label = abs;
-      if (!isProsePath(abs)) {
-        skipped = "not a prose file";
-      } else {
-        const onDisk = readFileSafe(abs);
-        if (onDisk === null) throw new Error(`Cannot read file: ${abs}`);
-        content = onDisk;
-        if (hasSkipMarker(content)) skipped = "skip marker present";
-      }
-    }
-
-    const hard = skipped ? [] : findHardViolations(content);
-    const density = skipped ? [] : findDensityViolations(content);
-    const total = hard.length + density.length;
-    const text =
-      skipped !== undefined
-        ? `Humanizer audit of ${label}: skipped (${skipped}).`
-        : total === 0
-          ? `Humanizer audit of ${label}: clean, no AI writing tells found.`
-          : formatAuditReport(hard.concat(density), label);
-    const base = { file: label, hard: hard.map(toJsonViolation), density: density.map(toJsonViolation) };
-    const structured = skipped === undefined ? base : { ...base, skipped };
-    const details: Record<string, unknown> = { file: label, hard, density };
-    if (skipped !== undefined) details["skipped"] = skipped;
-    return {
-      content: [{ type: "text", text }],
-      details,
-      structuredContent: structured,
-    };
-  },
-});
 
 export default function (pi: ExtensionAPI) {
   if (isDisabled()) return;
@@ -440,7 +319,4 @@ export default function (pi: ExtensionAPI) {
       ],
     };
   });
-
-  // Engine-powered audit for the /audit prompt template (prompts/audit.md).
-  pi.registerTool(auditTool);
 }
