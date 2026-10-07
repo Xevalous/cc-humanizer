@@ -100,4 +100,26 @@ console.log('✓ Fenced code exemption passed');
 assert(rules.hasSkipMarker('<!-- humanizer:skip --> some text'), 'Skip marker recognized');
 console.log('✓ Skip marker recognized');
 
-console.log('\nAll 15 rule engine tests passed successfully!');
+// Test 16: Domains, versions, and initials are not fragmented punctuation
+const t16Pass = [
+  'Access the portal at portal.example.ac.id for academic services.',
+  'Deploy to app.example.ac.id for production.',
+  'Reach us at info@example.co.id for help.',
+  'Version 1.2.3 is now released.',
+  'J. K. Rowling wrote the book.',
+];
+for (const text of t16Pass) {
+  const hits = rules.findHardViolations(text).filter(function (v) { return v.rule === 'periods-between-words'; });
+  assert.strictEqual(hits.length, 0, 'Should not flag fragmented punctuation: ' + text);
+}
+const t16Block = [
+  'It happened every. single. day. here.',
+  'No. More. Delays. please.',
+];
+for (const text of t16Block) {
+  const hits = rules.findHardViolations(text).filter(function (v) { return v.rule === 'periods-between-words'; });
+  assert(hits.length > 0, 'Should flag fragmented punctuation: ' + text);
+}
+console.log('✓ Fragmented punctuation ignores domains/versions/initials');
+
+console.log('\nAll 16 rule engine tests passed successfully!');
